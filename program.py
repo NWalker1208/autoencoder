@@ -17,7 +17,7 @@ from tensorflow.keras.optimizers import RMSprop
 
 
 # Define size of encoded layer
-latent_dim = 64
+latent_dim = 32
 
 # Functions
 
@@ -50,7 +50,7 @@ class Autoencoder(Model):
             layers.MaxPooling2D(pool_size=(2, 2)),
             layers.Conv2D(64, (3, 3), activation='relu', padding='same'),
             layers.Flatten(),
-            layers.Dense(latent_dim, activation='relu')
+            layers.Dense(latent_dim, activation='sigmoid')
         ])
         self.decoder = tf.keras.Sequential([
             layers.Dense(3136, activation='relu'),
@@ -180,13 +180,20 @@ for i in range(n):
 plt.show()
 
 # Display interactive view
-inputVals = encoded_imgs[0]
-
 fig1, ax = plt.subplots()
 ax.get_xaxis().set_visible(False)
 ax.get_yaxis().set_visible(False)
 img = plt.imshow([[0]], vmin=0, vmax=1)
 plt.gray()
+
+fig2 = plt.figure(figsize=(8, 8))
+axcolor = 'lightgoldenrodyellow'
+
+def random_encoded():
+    np.random.shuffle(encoded_imgs)
+    return encoded_imgs[0]
+
+inputVals = random_encoded()
 
 def draw_image():
     data = np.array([inputVals])
@@ -195,20 +202,37 @@ def draw_image():
     img.vmax = np.max(result)
     img.set_data(result.reshape(28, 28))
 
-fig2 = plt.figure(figsize=(10, 10))
-axcolor = 'lightgoldenrodyellow'
-
 def update(index, val):
+    if (updating): 
+        return
     inputVals[index] = val
     draw_image()
     fig1.canvas.draw_idle()
     fig2.canvas.draw_idle()
 
+def on_random(event):
+    inputVals = random_encoded()
+    updating = True
+    for i in range(latent_dim):
+        sliders[i].set_val(inputVals[i])
+    updating = False
+    draw_image()
+    fig1.canvas.draw_idle()
+    fig2.canvas.draw_idle()
+
+def on_slider(index):
+    return lambda val : update(index, val)
+
+updating = False
 sliders = []
 for i in range(latent_dim):
-    ax = plt.subplot(latent_dim / 2, 2, i + 1, facecolor=axcolor)
+    ax = plt.subplot(latent_dim / 2 + 1, 2, i + 3, facecolor=axcolor)
     sliders.append(Slider(ax, 'P' + str(i), 0.0, 1.0, valinit=inputVals[i], valstep=0.01))
-    sliders[i].on_changed(lambda val : update(i, val))
+    sliders[i].on_changed(on_slider(i))
+
+ax = plt.subplot(latent_dim / 2 + 1, 2, 1)
+button = Button(ax, 'Random')
+button.on_clicked(on_random)
 
 draw_image()
 plt.show()
