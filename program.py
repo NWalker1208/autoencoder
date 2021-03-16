@@ -1,14 +1,22 @@
 # Code from: https://www.datacamp.com/community/tutorials/autoencoder-keras-tutorial
+# See also: https://blog.keras.io/building-autoencoders-in-keras.html
+#           https://www.tensorflow.org/tutorials/generative/autoencoder
 
 import tensorflow as tf
 from matplotlib import pyplot as plt
 import numpy as np
 import gzip
-from keras.layers import Input, Conv2D, MaxPooling2D, UpSampling2D
+from keras.layers import Input, Flatten, Dense, Reshape, Conv2D, MaxPooling2D, UpSampling2D
 from keras.models import Model
 from keras.optimizers import RMSprop
 from sklearn.model_selection import train_test_split
 import os.path
+import math
+
+# Define size of encoded layer
+encoding_size = 256
+
+# Functions
 
 
 def extract_data(filename, num_images):
@@ -28,27 +36,27 @@ def extract_labels(filename, num_images):
         return labels
 
 
-def autoencoder(input_img):
-    # encoder
-    # input = 28 x 28 x 1 (wide and thin)
-    conv1 = Conv2D(32, (3, 3), activation='relu',
-                   padding='same')(input_img)  # 28 x 28 x 32
-    pool1 = MaxPooling2D(pool_size=(2, 2))(conv1)  # 14 x 14 x 32
-    conv2 = Conv2D(64, (3, 3), activation='relu',
-                   padding='same')(pool1)  # 14 x 14 x 64
-    pool2 = MaxPooling2D(pool_size=(2, 2))(conv2)  # 7 x 7 x 64
-    conv3 = Conv2D(128, (3, 3), activation='relu', padding='same')(
-        pool2)  # 7 x 7 x 128 (small and thick)
+def encode(input_img):
+    # input = 28 x 28 x 1
+    conv1 = Conv2D(16, (3, 3), activation='relu', padding='same')(input_img)
+    pool1 = MaxPooling2D(pool_size=(2, 2))(conv1)
+    conv2 = Conv2D(32, (3, 3), activation='relu', padding='same')(pool1)
+    pool2 = MaxPooling2D(pool_size=(2, 2))(conv2)
+    conv3 = Conv2D(64, (3, 3), activation='relu', padding='same')(pool2)
+    flat = Flatten()(conv3)
+    dense = Dense(encoding_size, activation='relu')(flat)
+    return dense
 
-    # decoder
-    conv4 = Conv2D(128, (3, 3), activation='relu',
-                   padding='same')(conv3)  # 7 x 7 x 128
-    up1 = UpSampling2D((2, 2))(conv4)  # 14 x 14 x 128
-    conv5 = Conv2D(64, (3, 3), activation='relu',
-                   padding='same')(up1)  # 14 x 14 x 64
-    up2 = UpSampling2D((2, 2))(conv5)  # 28 x 28 x 64
-    decoded = Conv2D(1, (3, 3), activation='sigmoid',
-                     padding='same')(up2)  # 28 x 28 x 1
+
+def decode(input_code):
+    # input = encoding_size x 1 x 1
+    dense = Dense(3136, activation='relu')(input_code)
+    reshape = Reshape((7, 7, 64))(dense)
+    conv1 = Conv2D(32, (3, 3), activation='relu', padding='same')(reshape)
+    up1 = UpSampling2D((2, 2))(conv1)
+    conv2 = Conv2D(16, (3, 3), activation='relu', padding='same')(up1)
+    up2 = UpSampling2D((2, 2))(conv2)
+    decoded = Conv2D(1, (3, 3), activation='sigmoid', padding='same')(up2)
     return decoded
 
 
@@ -79,10 +87,8 @@ test_data = test_data.reshape(-1, 28, 28, 1)
 train_data = train_data / np.max(train_data)
 test_data = test_data / np.max(test_data)
 
-train_X, valid_X, train_ground, valid_ground = train_test_split(train_data,
-                                                                train_data,
-                                                                test_size=0.2,
-                                                                random_state=13)
+train_X, valid_X, train_ground, valid_ground = train_test_split(
+    train_data, train_data, test_size=0.2)
 
 # Training configuration
 batch_size = 128
@@ -90,6 +96,7 @@ epochs = 50
 inChannel = 1
 x, y = 28, 28
 input_img = Input(shape=(x, y, inChannel))
+input_code = Input(shape=(encoding_size))
 
 # Setup checkpoints
 checkpoint_path = "training/cp.ckpt"
@@ -98,26 +105,32 @@ cp_callback = tf.keras.callbacks.ModelCheckpoint(filepath=checkpoint_path,
                                                  save_weights_only=True,
                                                  verbose=1)
 
-# Create model
-autoencoder = Model(input_img, autoencoder(input_img))
+# Create models
+encoded = encode(input_img)
+encoder = Model(input_img, encoded)
+decoder = Model(input_code, decode(input_code))
+autoencoder = Model(input_img, decode(encoded))
+
+# Compile models
 autoencoder.compile(loss='mean_squared_error', optimizer=RMSprop())
+print(autoencoder.summary())
 
 # Load previous checkpoint if it exists
-do_training = False
 if os.path.exists(checkpoint_dir):
     autoencoder.load_weights(checkpoint_path)
-    print("Successfully loaded previous training. Skip training? (Y/N) ")
-    do_training = (input() == "N")
+    print("Successfully loaded training checkpoint")
 
 # Train the model
-if do_training:
+print("Epochs to train:")
+epochs = int(input())
+if (epochs > 0):
     autoencoder_train = autoencoder.fit(train_X,
                                         train_ground,
                                         batch_size=batch_size,
                                         epochs=epochs,
                                         verbose=1,
-                                        validation_data=(
-                                            valid_X, valid_ground),
+                                        validation_data=(valid_X,
+                                                         valid_ground),
                                         callbacks=[cp_callback])
 
     # Plot loss
@@ -132,18 +145,31 @@ if do_training:
     plt.show()
 
 # Predict
-pred = autoencoder.predict(test_data)
-plt.figure(figsize=(20, 4))
-print("Test Images")
-for i in range(10):
-    plt.subplot(2, 10, i+1)
-    plt.imshow(test_data[i, ..., 0], cmap='gray')
-    curr_lbl = test_labels[i]
-    plt.title("(Label: " + str(label_dict[curr_lbl]) + ")")
-plt.show()
-plt.figure(figsize=(20, 4))
-print("Reconstruction of Test Images")
-for i in range(10):
-    plt.subplot(2, 10, i+1)
-    plt.imshow(pred[i, ..., 0], cmap='gray')
+encoded_imgs = encoder.predict(test_data)
+decoded_imgs = decoder.predict(encoded_imgs)
+
+# Display results
+n = 10
+plt.figure(figsize=(18, 6))
+for i in range(n):
+    # Display original
+    ax = plt.subplot(3, n, i + 1)
+    plt.imshow(test_data[i].reshape(28, 28))
+    plt.gray()
+    ax.get_xaxis().set_visible(False)
+    ax.get_yaxis().set_visible(False)
+
+    # Display encoded format
+    ax = plt.subplot(3, n, i + 1 + n)
+    plt.imshow(encoded_imgs[i].reshape(16, math.ceil(encoding_size / 16)))
+    plt.gray()
+    ax.get_xaxis().set_visible(False)
+    ax.get_yaxis().set_visible(False)
+
+    # Display reconstruction
+    ax = plt.subplot(3, n, i + 1 + n * 2)
+    plt.imshow(decoded_imgs[i].reshape(28, 28))
+    plt.gray()
+    ax.get_xaxis().set_visible(False)
+    ax.get_yaxis().set_visible(False)
 plt.show()
