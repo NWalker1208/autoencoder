@@ -6,6 +6,7 @@ import os.path
 import math
 
 import matplotlib.pyplot as plt
+from matplotlib.widgets import Slider, Button
 import numpy as np
 import tensorflow as tf
 
@@ -16,7 +17,7 @@ from tensorflow.keras.optimizers import RMSprop
 
 
 # Define size of encoded layer
-latent_dim = 256
+latent_dim = 64
 
 # Functions
 
@@ -176,4 +177,38 @@ for i in range(n):
     plt.gray()
     ax.get_xaxis().set_visible(False)
     ax.get_yaxis().set_visible(False)
+plt.show()
+
+# Display interactive view
+inputVals = encoded_imgs[0]
+
+fig1, ax = plt.subplots()
+ax.get_xaxis().set_visible(False)
+ax.get_yaxis().set_visible(False)
+img = plt.imshow([[0]], vmin=0, vmax=1)
+plt.gray()
+
+def draw_image():
+    data = np.array([inputVals])
+    result = autoencoder.decoder.predict(data)[0]
+    img.vmin = np.min(result)
+    img.vmax = np.max(result)
+    img.set_data(result.reshape(28, 28))
+
+fig2 = plt.figure(figsize=(10, 10))
+axcolor = 'lightgoldenrodyellow'
+
+def update(index, val):
+    inputVals[index] = val
+    draw_image()
+    fig1.canvas.draw_idle()
+    fig2.canvas.draw_idle()
+
+sliders = []
+for i in range(latent_dim):
+    ax = plt.subplot(latent_dim / 2, 2, i + 1, facecolor=axcolor)
+    sliders.append(Slider(ax, 'P' + str(i), 0.0, 1.0, valinit=inputVals[i], valstep=0.01))
+    sliders[i].on_changed(lambda val : update(i, val))
+
+draw_image()
 plt.show()
