@@ -17,7 +17,7 @@ from tensorflow.keras.optimizers import RMSprop
 
 
 # Define size of encoded layer
-latent_dim = 32
+latent_dim = 16
 
 # Functions
 
@@ -50,9 +50,11 @@ class Autoencoder(Model):
             layers.MaxPooling2D(pool_size=(2, 2)),
             layers.Conv2D(64, (3, 3), activation='relu', padding='same'),
             layers.Flatten(),
+            layers.Dense(512, activation='relu'),
             layers.Dense(latent_dim, activation='sigmoid')
         ])
         self.decoder = tf.keras.Sequential([
+            layers.Dense(512, activation='relu'),
             layers.Dense(3136, activation='relu'),
             layers.Reshape((7, 7, 64)),
             layers.Conv2D(32, (3, 3), activation='relu', padding='same'),
@@ -186,7 +188,7 @@ ax.get_yaxis().set_visible(False)
 img = plt.imshow([[0]], vmin=0, vmax=1)
 plt.gray()
 
-fig2 = plt.figure(figsize=(8, 8))
+fig2 = plt.figure(figsize=(8, 5))
 axcolor = 'lightgoldenrodyellow'
 
 def random_encoded():
